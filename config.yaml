@@ -1,0 +1,74 @@
+# Configuration file for Fraud Detection GNN System
+
+# Model configuration
+model:
+  in_size: 360
+  hidden_size: 16
+  out_size: 2
+  n_layers: 3
+  embedding_size: 360
+
+# Training configuration
+training:
+  lr: 0.01
+  weight_decay: 5e-4
+  n_epochs: 100
+  batch_size: 1024
+  save_path: ./model/best_model.pth
+
+# Distributed training configuration
+distributed:
+  world_size: 4
+  backend: gloo  # or 'nccl' for GPU
+  master_addr: localhost
+  master_port: "12355"
+
+# Graph processing configuration
+graph_processing:
+  num_workers: 4
+  chunk_size: 10000
+  partition_method: metis  # or 'random'
+  num_parts: 4
+
+# Feature engineering configuration
+feature_engineering:
+  extract_degree: true
+  extract_centrality: true
+  extract_clustering: true
+  extract_neighbor: true
+  centrality_sample_size: 1000
+
+# Storage configuration
+storage:
+  backend: csv  # 'csv', 'redis', or 'parquet'
+  base_dir: ./data/features
+  redis:
+    host: localhost
+    port: 6379
+    db: 0
+    password: null
+
+# API configuration
+api:
+  host: 0.0.0.0
+  port: 8000
+  workers: 4
+  reload: false
+
+# Data paths
+data:
+  transaction_path: ./storage/india_fraud_data_explainable/transactions.csv
+  identity_path: null  # Not needed for user-transaction format
+  users_path: ./storage/india_fraud_data_explainable/users.csv
+  locations_path: ./storage/india_fraud_data_explainable/locations.csv
+  output_dir: ./data
+  feature_file: features.csv
+  labels_file: tags.csv
+  test_file: test.csv
+  # Column name mappings for user-transaction format
+  sender_col: sender_id
+  receiver_col: receiver_id
+  amount_col: amount
+  timestamp_col: timestamp
+  fraud_col: is_fraud_txn
+

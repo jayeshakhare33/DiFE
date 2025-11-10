@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Redis service for feature store
+  redis:
+    image: redis:7-alpine
+    container_name: fraud-detection-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fraud-detection-network
+
+  # API service
+  api:
+    build: .
+    container_name: fraud-detection-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - FEATURE_STORE_BACKEND=redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MODEL_PATH=/app/model/model.pth
+      - METADATA_PATH=/app/model/metadata.pkl
+      - DEVICE=cpu
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fraud-detection-network
+    restart: unless-stopped
+
+  # Training service (optional, for distributed training)
+  trainer:
+    build: .
+    container_name: fraud-detection-trainer
+    volumes:
+      - ./data:/app/data
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - WORLD_SIZE=4
+      - BACKEND=gloo
+      - DEVICE=cpu
+    command: python -m gnn_training.train_distributed
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    profiles:
+      - training
+
+volumes:
+  redis-data:
+
+networks:
+  fraud-detection-network:
+    driver: bridge
+
