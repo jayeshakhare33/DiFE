@@ -27,8 +27,8 @@ import pandas as pd
 SEED = 42
 OUT_DIR = "./india_fraud_data_explainable"
 
-N_USERS = 50_000
-TARGET_TRANSACTIONS = 2_000_000
+N_USERS = 20  # Reduced for small dataset
+TARGET_TRANSACTIONS = 250  # Target 200-300 rows
 
 FRAUD_RATE = 0.035  # initial guess, replaced by logical tagging
 USE_EPOCH_MS = True
@@ -126,8 +126,14 @@ def generate_transactions(users_df, tx_start, tx_end):
     reciprocal_buffer = []
 
     for uid in user_ids:
-        n_tx = np.random.randint(10, 300)
+        # Limit transactions per user to keep total around 200-300
+        remaining = TARGET_TRANSACTIONS - len(tx_records)
+        if remaining <= 0:
+            break
+        n_tx = min(np.random.randint(1, 15), remaining)  # Reduced from 10-300 to 1-15
         for _ in range(n_tx):
+            if len(tx_records) >= TARGET_TRANSACTIONS:
+                break
             receiver = random.choice(user_ids)
             if receiver == uid:
                 continue
@@ -168,8 +174,10 @@ def generate_transactions(users_df, tx_start, tx_end):
             if random.random() < RECIPROCAL_RATIO:
                 reciprocal_buffer.append((receiver, uid, amount, t))
 
-    # add reciprocal transactions
+    # add reciprocal transactions (respecting target limit)
     for (s, r, amt, t) in reciprocal_buffer:
+        if len(tx_records) >= TARGET_TRANSACTIONS:
+            break
         t2 = t + timedelta(minutes=random.randint(1, 120))
         lat1, lon1 = COUNTRY_LATLON[countries[s]]
         lat2, lon2 = COUNTRY_LATLON[countries[r]]
@@ -234,21 +242,39 @@ def label_fraudulent_transactions(tx_df, users_df):
     fraud_users = set(users_df.loc[users_df["is_fraud"] == 1, "user_id"])
     tx_df["is_fraud_txn"] = 0
     tx_df["fraud_reason"] = ""
+    
+    MAX_FRAUD_TXN = 10  # Target maximum fraudulent transactions
+    fraud_count = 0
 
-    for i, row in tx_df.iterrows():
+    # Shuffle indices to randomize which transactions get flagged
+    indices = list(tx_df.index)
+    random.shuffle(indices)
+
+    for i in indices:
+        row = tx_df.loc[i]
         flag = 0
         reason = ""
-        if row["sender_id"] in fraud_users and row["receiver_id"] in fraud_users:
-            flag = 1; reason = "fraud_to_fraud"
-        elif row["is_cross_border"] and row["amount"] > 10000:
-            flag = 1; reason = "cross_border_high_amount"
-        elif 9998 <= row["amount"] <= 10000:
-            flag = 1; reason = "threshold_pattern"
-        elif row["status"] != "success" and row["amount"] > 50000:
-            flag = 1; reason = "failed_high_amount"
-        elif random.random() < 0.01:
-            flag = 1; reason = "random_noise"
+        
+        # Only flag as fraud if we haven't reached the max yet
+        if fraud_count < MAX_FRAUD_TXN:
+            # More lenient fraud detection conditions
+            if row["sender_id"] in fraud_users and row["receiver_id"] in fraud_users:
+                flag = 1; reason = "fraud_to_fraud"
+            elif row["is_cross_border"] and row["amount"] > 5000:  # Lowered from 10000
+                flag = 1; reason = "cross_border_high_amount"
+            elif 9990 <= row["amount"] <= 10010:  # Wider threshold range
+                flag = 1; reason = "threshold_pattern"
+            elif row["status"] != "success" and row["amount"] > 10000:  # Lowered from 50000
+                flag = 1; reason = "failed_high_amount"
+            elif row["amount"] > 15000:  # New: very high amount
+                flag = 1; reason = "unusually_high_amount"
+            elif row["is_cross_border"] and row["amount"] > 2000:  # New: moderate cross-border
+                flag = 1; reason = "suspicious_cross_border"
+            elif random.random() < 0.08:  # Increased probability to ensure we get enough frauds
+                flag = 1; reason = "random_noise"
 
+        if flag == 1:
+            fraud_count += 1
         tx_df.at[i, "is_fraud_txn"] = flag
         tx_df.at[i, "fraud_reason"] = reason
 

@@ -100,7 +100,24 @@ def extract_features(g: dgl.DGLHeteroGraph, config: Dict, feature_store: Feature
     # Save to feature store
     feature_store.save_features(features_df, 'node_features')
     logger.info(f"Extracted and saved {len(features_df.columns)} node features for {len(features_df)} nodes")
-    logger.info(f"Extracted {len(edge_features)} edge features")
+    
+    # Save edge features to disk
+    if edge_features:
+        # Convert edge features dict to DataFrame
+        # Get the number of edges from the first tensor
+        n_edges = len(list(edge_features.values())[0]) if edge_features else 0
+        edge_features_dict = {}
+        for name, tensor in edge_features.items():
+            if isinstance(tensor, torch.Tensor):
+                edge_features_dict[name] = tensor.cpu().numpy()
+            else:
+                edge_features_dict[name] = tensor
+        
+        edge_features_df = pd.DataFrame(edge_features_dict)
+        feature_store.save_features(edge_features_df, 'edge_features')
+        logger.info(f"Extracted and saved {len(edge_features_df.columns)} edge features for {len(edge_features_df)} edges")
+    else:
+        logger.info("No edge features extracted")
     
     return features_df, edge_features
 

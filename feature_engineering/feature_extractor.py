@@ -467,9 +467,19 @@ class FeatureExtractor:
                 
                 # Mode hour and day of week
                 if len(hours) > 0:
-                    features['hour_of_day_mode'][i] = stats.mode(hours)[0][0] if len(hours) > 0 else 0
+                    hours_array = np.array(hours)
+                    mode_result = stats.mode(hours_array, keepdims=False)
+                    # Extract mode value (handles both old and new scipy versions)
+                    mode_value = mode_result.mode if hasattr(mode_result, 'mode') else mode_result[0]
+                    # Convert to scalar if it's a numpy array
+                    features['hour_of_day_mode'][i] = float(mode_value.item() if isinstance(mode_value, np.ndarray) else mode_value)
                 if len(days_of_week) > 0:
-                    features['day_of_week_mode'][i] = stats.mode(days_of_week)[0][0] if len(days_of_week) > 0 else 0
+                    days_array = np.array(days_of_week)
+                    mode_result = stats.mode(days_array, keepdims=False)
+                    # Extract mode value (handles both old and new scipy versions)
+                    mode_value = mode_result.mode if hasattr(mode_result, 'mode') else mode_result[0]
+                    # Convert to scalar if it's a numpy array
+                    features['day_of_week_mode'][i] = float(mode_value.item() if isinstance(mode_value, np.ndarray) else mode_value)
                 
                 # Transaction time variance
                 if len(timestamps) > 1:
@@ -807,10 +817,11 @@ class EdgeFeatureExtractor:
         for i in range(n_edges):
             src, dst = src_np[i], dst_np[i]
             pair = (min(src, dst), max(src, dst))
-            current_time = timestamps_np[i]
+            current_time = float(timestamps_np[i])  # Convert to Python float
             
             if pair in user_pair_last_time:
-                time_since[i] = current_time - user_pair_last_time[pair]
+                time_diff = current_time - user_pair_last_time[pair]
+                time_since[i] = float(time_diff)  # Convert to Python float before assignment
             else:
                 time_since[i] = 0.0
             
@@ -841,7 +852,7 @@ class EdgeFeatureExtractor:
                 sorted_amounts = sorted([a for _, a in amount_list])
                 for idx, amount in amount_list:
                     percentile = sorted_amounts.index(amount) / len(sorted_amounts)
-                    percentiles[idx] = percentile
+                    percentiles[idx] = float(percentile)  # Convert to Python float
         
         return percentiles
     
@@ -868,7 +879,7 @@ class EdgeFeatureExtractor:
                 sorted_amounts = sorted([a for _, a in amount_list])
                 for idx, amount in amount_list:
                     percentile = sorted_amounts.index(amount) / len(sorted_amounts)
-                    percentiles[idx] = percentile
+                    percentiles[idx] = float(percentile)  # Convert to Python float
         
         return percentiles
     
@@ -909,12 +920,13 @@ class EdgeFeatureExtractor:
         
         # Store edge times
         for i in range(n_edges):
-            edge_times[(src_np[i], dst_np[i])] = timestamps_np[i]
+            edge_times[(src_np[i], dst_np[i])] = float(timestamps_np[i])  # Convert to Python float
         
         # Find reciprocal time gaps
         for i in range(n_edges):
             reciprocal_edge = (dst_np[i], src_np[i])
             if reciprocal_edge in edge_times:
-                time_gaps[i] = abs(timestamps_np[i] - edge_times[reciprocal_edge])
+                time_diff = abs(float(timestamps_np[i]) - edge_times[reciprocal_edge])
+                time_gaps[i] = float(time_diff)  # Convert to Python float before assignment
         
         return time_gaps

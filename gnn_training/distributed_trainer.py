@@ -45,12 +45,25 @@ class DistributedTrainer:
             master_addr: Master address
             master_port: Master port
         """
-        os.environ['MASTER_ADDR'] = master_addr
-        os.environ['MASTER_PORT'] = master_port
+        import platform
+        
+        # On Windows, use file:// init method instead of tcp:// to avoid libuv requirement
+        if platform.system() == 'Windows':
+            # Use file-based initialization for Windows
+            # Create a temporary file for initialization
+            init_file = os.path.join(os.getcwd(), '.dist_init')
+            # Convert Windows path to file:// URL format
+            init_method = f"file:///{init_file.replace(os.sep, '/')}"
+        else:
+            # Use TCP initialization for Linux/Mac
+            os.environ['MASTER_ADDR'] = master_addr
+            os.environ['MASTER_PORT'] = master_port
+            init_method = 'env://'
         
         # Initialize process group
         dist.init_process_group(
             backend=self.backend,
+            init_method=init_method,
             rank=rank,
             world_size=world_size
         )
@@ -60,6 +73,15 @@ class DistributedTrainer:
     def cleanup_distributed(self):
         """Cleanup distributed environment"""
         dist.destroy_process_group()
+        # Clean up init file on Windows
+        import platform
+        if platform.system() == 'Windows':
+            init_file = os.path.join(os.getcwd(), '.dist_init')
+            if os.path.exists(init_file):
+                try:
+                    os.remove(init_file)
+                except:
+                    pass  # Ignore cleanup errors
         logger.info("Distributed group destroyed")
     
     def train_worker(self, rank: int, world_size: int, g: dgl.DGLHeteroGraph,
@@ -82,8 +104,21 @@ class DistributedTrainer:
         # Setup distributed
         self.setup_distributed(rank, world_size)
         
-        # Get device
-        device = torch.device(f'cuda:{rank}' if torch.cuda.is_available() else 'cpu')
+        # Get device - check available GPUs and assign accordingly
+        if torch.cuda.is_available():
+            num_gpus = torch.cuda.device_count()
+            if rank < num_gpus:
+                # Assign to GPU if available
+                device = torch.device(f'cuda:{rank}')
+            else:
+                # Fall back to CPU if not enough GPUs
+                device = torch.device('cpu')
+                logger.warning(f"Process {rank}: Not enough GPUs (have {num_gpus}, need {world_size}), using CPU")
+        else:
+            # No CUDA available, use CPU
+            device = torch.device('cpu')
+            logger.info(f"Process {rank}: CUDA not available, using CPU")
+        
         logger.info(f"Process {rank} using device: {device}")
         
         # Partition graph for this process
@@ -199,6 +234,16 @@ class DistributedTrainer:
             model_config: Model configuration
             training_config: Training configuration
         """
+        # Adjust world_size based on available GPUs
+        if torch.cuda.is_available():
+            num_gpus = torch.cuda.device_count()
+            if self.world_size > num_gpus:
+                logger.warning(f"Requested {self.world_size} processes but only {num_gpus} GPUs available. "
+                             f"Limiting to {num_gpus} processes or using CPU for extra processes.")
+                # Keep world_size as is, but processes beyond num_gpus will use CPU
+        else:
+            logger.info("CUDA not available, all processes will use CPU")
+        
         logger.info(f"Starting distributed training with {self.world_size} processes")
         
         if self.world_size == 1:
