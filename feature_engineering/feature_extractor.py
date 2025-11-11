@@ -231,6 +231,7 @@ class FeatureExtractor:
         
         node_ids = g.nodes(node_type).numpy()
         n_nodes = len(node_ids)
+        logger.info(f"Processing {n_nodes} nodes for topology features")
         
         features = {
             'in_degree': np.zeros(n_nodes),
@@ -248,6 +249,7 @@ class FeatureExtractor:
         }
         
         # Compute degrees
+        logger.info("Computing node degrees...")
         total_in_degree = np.zeros(n_nodes)
         total_out_degree = np.zeros(n_nodes)
         
@@ -266,6 +268,7 @@ class FeatureExtractor:
         
         # Convert to NetworkX for centrality calculations
         try:
+            logger.info("Converting to NetworkX graph...")
             target_nodes = g.nodes(node_type)
             
             # Create adjacency matrix
@@ -285,49 +288,78 @@ class FeatureExtractor:
                 for dst in dsts:
                     nx_g.add_edge(src, dst)
             
+            logger.info(f"NetworkX graph created: {len(nx_g.nodes())} nodes, {len(nx_g.edges())} edges")
+            
             if len(nx_g.nodes()) > 0:
-                # Degree centrality
+                # Degree centrality (fast)
+                logger.info("Computing degree centrality...")
                 degree_centrality = nx.degree_centrality(nx_g)
                 features['degree_centrality'] = np.array([degree_centrality.get(n, 0) for n in node_ids])
                 
-                # Betweenness centrality
-                if len(nx_g.nodes()) < 10000:
+                # Betweenness centrality (slow for large graphs)
+                logger.info("Computing betweenness centrality...")
+                if len(nx_g.nodes()) < 5000:
                     betweenness = nx.betweenness_centrality(nx_g)
-                else:
+                    features['betweenness_centrality'] = np.array([betweenness.get(n, 0) for n in node_ids])
+                elif len(nx_g.nodes()) < 50000:
                     sample_nodes = np.random.choice(list(nx_g.nodes()), min(1000, len(nx_g.nodes())), replace=False)
                     betweenness = nx.betweenness_centrality(nx_g, k=len(sample_nodes))
-                features['betweenness_centrality'] = np.array([betweenness.get(n, 0) for n in node_ids])
+                    features['betweenness_centrality'] = np.array([betweenness.get(n, 0) for n in node_ids])
+                else:
+                    logger.warning("Graph too large for betweenness centrality, skipping...")
+                    features['betweenness_centrality'] = np.zeros(n_nodes)
                 
-                # Closeness centrality
-                if len(nx_g.nodes()) < 5000:
+                # Closeness centrality (very slow for large graphs)
+                logger.info("Computing closeness centrality...")
+                if len(nx_g.nodes()) < 3000:
                     closeness = nx.closeness_centrality(nx_g)
                     features['closeness_centrality'] = np.array([closeness.get(n, 0) for n in node_ids])
                 else:
+                    logger.warning("Graph too large for closeness centrality, skipping...")
                     features['closeness_centrality'] = np.zeros(n_nodes)
                 
-                # PageRank
-                pagerank = nx.pagerank(nx_g, max_iter=100)
+                # PageRank (moderately fast)
+                logger.info("Computing PageRank...")
+                pagerank = nx.pagerank(nx_g, max_iter=100, tol=1e-06)
                 features['pagerank_score'] = np.array([pagerank.get(n, 0) for n in node_ids])
                 
-                # Katz centrality
-                try:
-                    katz = nx.katz_centrality(nx_g, max_iter=1000)
-                    features['katz_centrality'] = np.array([katz.get(n, 0) for n in node_ids])
-                except:
+                # Katz centrality (can be slow)
+                logger.info("Computing Katz centrality...")
+                if len(nx_g.nodes()) < 10000:
+                    try:
+                        katz = nx.katz_centrality(nx_g, max_iter=100, tol=1e-06)
+                        features['katz_centrality'] = np.array([katz.get(n, 0) for n in node_ids])
+                    except:
+                        logger.warning("Katz centrality failed, using zeros")
+                        features['katz_centrality'] = np.zeros(n_nodes)
+                else:
+                    logger.warning("Graph too large for Katz centrality, skipping...")
                     features['katz_centrality'] = np.zeros(n_nodes)
                 
-                # Eigenvector centrality
-                try:
-                    eigenvector = nx.eigenvector_centrality(nx_g, max_iter=1000)
-                    features['eigenvector_centrality'] = np.array([eigenvector.get(n, 0) for n in node_ids])
-                except:
+                # Eigenvector centrality (can be slow)
+                logger.info("Computing eigenvector centrality...")
+                if len(nx_g.nodes()) < 10000:
+                    try:
+                        eigenvector = nx.eigenvector_centrality(nx_g, max_iter=100, tol=1e-06)
+                        features['eigenvector_centrality'] = np.array([eigenvector.get(n, 0) for n in node_ids])
+                    except:
+                        logger.warning("Eigenvector centrality failed, using zeros")
+                        features['eigenvector_centrality'] = np.zeros(n_nodes)
+                else:
+                    logger.warning("Graph too large for eigenvector centrality, skipping...")
                     features['eigenvector_centrality'] = np.zeros(n_nodes)
                 
-                # Clustering coefficient
-                clustering = nx.clustering(nx_g.to_undirected())
-                features['clustering_coefficient'] = np.array([clustering.get(n, 0) for n in node_ids])
+                # Clustering coefficient (moderately fast)
+                logger.info("Computing clustering coefficient...")
+                if len(nx_g.nodes()) < 50000:
+                    clustering = nx.clustering(nx_g.to_undirected())
+                    features['clustering_coefficient'] = np.array([clustering.get(n, 0) for n in node_ids])
+                else:
+                    logger.warning("Graph too large for clustering coefficient, skipping...")
+                    features['clustering_coefficient'] = np.zeros(n_nodes)
                 
-                # Average neighbor degree
+                # Average neighbor degree (fast)
+                logger.info("Computing average neighbor degree...")
                 avg_neighbor_degree = {}
                 for node in node_ids:
                     neighbors = list(nx_g.neighbors(node))
@@ -338,15 +370,22 @@ class FeatureExtractor:
                         avg_neighbor_degree[node] = 0.0
                 features['average_neighbor_degree'] = np.array([avg_neighbor_degree.get(n, 0) for n in node_ids])
                 
-                # Triangles count
-                triangles = nx.triangles(nx_g.to_undirected())
-                features['triangles_count'] = np.array([triangles.get(n, 0) for n in node_ids])
+                # Triangles count (can be slow for large graphs)
+                logger.info("Computing triangles count...")
+                if len(nx_g.nodes()) < 20000:
+                    triangles = nx.triangles(nx_g.to_undirected())
+                    features['triangles_count'] = np.array([triangles.get(n, 0) for n in node_ids])
+                else:
+                    logger.warning("Graph too large for triangles count, skipping...")
+                    features['triangles_count'] = np.zeros(n_nodes)
             else:
                 # Empty graph - all zeros already set
-                pass
+                logger.warning("Empty graph, all topology features set to zero")
                 
         except Exception as e:
             logger.warning(f"Topology calculation failed: {e}, using zeros")
+            import traceback
+            logger.debug(traceback.format_exc())
         
         return features
     

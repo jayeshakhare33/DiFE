@@ -25,6 +25,8 @@ venv/
 ENV/
 env/
 .venv
+dgl_env/
+./dgl_env/
 
 # IDEs
 .vscode/
@@ -38,6 +40,7 @@ env/
 *.parquet
 *.pkl
 *.pth
+*.zip
 data/
 model/
 output/
@@ -60,11 +63,13 @@ Thumbs.db
 .dockerignore
 
 
-
+./storage/
 ./storage/india_fraud_data_explainable/
 
-
-
-
-
+# Specific data files (explicitly listed for clarity)
+users.csv
+transactions.csv
+transactions.zip
+locations.csv
+datasets.zip
 
