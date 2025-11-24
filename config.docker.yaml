@@ -1,4 +1,5 @@
-# Configuration file for Fraud Detection GNN System
+# Docker Configuration for Multi-Container Setup
+# This config uses container service names for networking
 
 # Model configuration
 model:
@@ -14,13 +15,13 @@ training:
   weight_decay: 5e-4
   n_epochs: 100
   batch_size: 1024
-  save_path: ./model/best_model.pth
+  save_path: /app/model/best_model.pth
 
 # Distributed training configuration
 distributed:
   world_size: 4
   backend: gloo  # or 'nccl' for GPU
-  master_addr: localhost
+  master_addr: trainer-0  # Use container hostname
   master_port: "12355"
 
 # Graph processing configuration
@@ -38,34 +39,33 @@ feature_engineering:
   extract_neighbor: true
   centrality_sample_size: 1000
 
-# Storage configuration
+# Storage configuration for Docker
 storage:
-  backend: parquet # 'csv', 'redis', or 'parquet'
-  base_dir: ./data/features
+  backend: parquet  # Use Parquet for persistent storage
+  base_dir: /app/data/features  # Container path
   redis:
-    host: localhost
+    host: redis  # Use service name for container communication
     port: 6379
     db: 0
     password: null
 
 # API configuration
 api:
-  host: 0.0.0.0
+  host: 0.0.0.0  # Listen on all interfaces
   port: 8000
   workers: 4
   reload: false
 
-# Data paths
+# Data paths (container paths)
 data:
-  transaction_path: ./storage/india_fraud_data_explainable/transactions.csv
-  identity_path: null  # Not needed for user-transaction format
-  users_path: ./storage/india_fraud_data_explainable/users.csv
-  locations_path: ./storage/india_fraud_data_explainable/locations.csv
-  output_dir: ./data
+  transaction_path: /app/storage/india_fraud_data_explainable/transactions.csv
+  identity_path: null
+  users_path: /app/storage/india_fraud_data_explainable/users.csv
+  locations_path: /app/storage/india_fraud_data_explainable/locations.csv
+  output_dir: /app/data
   feature_file: features.csv
   labels_file: tags.csv
   test_file: test.csv
-  # Column name mappings for user-transaction format
   sender_col: sender_id
   receiver_col: receiver_id
   amount_col: amount

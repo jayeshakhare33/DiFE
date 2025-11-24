@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Redis service for feature store
+  # Redis service for feature store and inter-container communication
   redis:
     image: redis:7-alpine
     container_name: fraud-detection-redis
@@ -9,6 +9,8 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+      # Mount features directory to preload features
+      - ./data/features:/data/features:ro
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -17,6 +19,27 @@ services:
       retries: 5
     networks:
       - fraud-detection-network
+    restart: unless-stopped
+
+  # Feature Loader Service - Preloads features into Redis for fast access
+  feature-loader:
+    build: .
+    container_name: fraud-detection-feature-loader
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+    environment:
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python scripts/load_features_to_redis.py
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fraud-detection-network
+    restart: "no"  # Run once to load features
 
   # API service
   api:
@@ -26,51 +49,178 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      - ./data/features:/app/data/features:ro  # Shared read-only feature storage
       - ./model:/app/model
       - ./output:/app/output
       - ./logs:/app/logs
     environment:
-      - FEATURE_STORE_BACKEND=redis
-      - REDIS_HOST=redis
+      - FEATURE_STORE_BACKEND=redis  # Use Redis for fast access
+      - REDIS_HOST=redis  # Use service name for container communication
       - REDIS_PORT=6379
       - MODEL_PATH=/app/model/model.pth
       - METADATA_PATH=/app/model/metadata.pkl
       - DEVICE=cpu
+      - STORAGE_BASE_DIR=/app/data/features
     depends_on:
       redis:
         condition: service_healthy
+      feature-loader:
+        condition: service_completed_successfully
     networks:
       - fraud-detection-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
 
-  # Training service (optional, for distributed training)
-  trainer:
+  # Training Worker 0 (Master)
+  trainer-0:
     build: .
-    container_name: fraud-detection-trainer
+    container_name: fraud-detection-trainer-0
+    hostname: trainer-0
     volumes:
       - ./data:/app/data
+      - ./data/features:/app/data/features:ro  # Shared feature storage
       - ./model:/app/model
       - ./output:/app/output
       - ./logs:/app/logs
     environment:
+      - RANK=0
       - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0  # Use container hostname
+      - MASTER_PORT=12355
       - BACKEND=gloo
       - DEVICE=cpu
-    command: python -m gnn_training.train_distributed
+      - FEATURE_STORE_BACKEND=parquet  # Use Parquet for training
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=0 --master_addr=trainer-0 --master_port=12355 main.py --mode train
     networks:
       - fraud-detection-network
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 8G
+          cpus: '2'
+          memory: 4G
+    profiles:
+      - training
+
+  # Training Worker 1
+  trainer-1:
+    build: .
+    container_name: fraud-detection-trainer-1
+    hostname: trainer-1
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - RANK=1
+      - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0
+      - MASTER_PORT=12355
+      - BACKEND=gloo
+      - DEVICE=cpu
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=1 --master_addr=trainer-0 --master_port=12355 main.py --mode train
+    depends_on:
+      - trainer-0
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    profiles:
+      - training
+
+  # Training Worker 2
+  trainer-2:
+    build: .
+    container_name: fraud-detection-trainer-2
+    hostname: trainer-2
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - RANK=2
+      - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0
+      - MASTER_PORT=12355
+      - BACKEND=gloo
+      - DEVICE=cpu
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=2 --master_addr=trainer-0 --master_port=12355 main.py --mode train
+    depends_on:
+      - trainer-0
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    profiles:
+      - training
+
+  # Training Worker 3
+  trainer-3:
+    build: .
+    container_name: fraud-detection-trainer-3
+    hostname: trainer-3
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - RANK=3
+      - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0
+      - MASTER_PORT=12355
+      - BACKEND=gloo
+      - DEVICE=cpu
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=3 --master_addr=trainer-0 --master_port=12355 main.py --mode train
+    depends_on:
+      - trainer-0
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
     profiles:
       - training
 
 volumes:
   redis-data:
+    driver: local
 
 networks:
   fraud-detection-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
