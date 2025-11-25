@@ -161,20 +161,34 @@ flowchart TD
     
     Deploy --> Wait[System Ready<br/>Waiting for Requests]
     
-    Wait --> Request[Receive API Request<br/>POST /predict]
+    Wait --> Request[Receive API Request<br/>POST /predict<br/>New Transaction Batch]
     Request --> Validate{Valid Request?}
     
     Validate -->|No| Error[Return Error<br/>400 Bad Request]
     Error --> Wait
     
-    Validate -->|Yes| GetFeatures[Retrieve Features<br/>from Redis]
-    GetFeatures --> LoadModel[Load GNN Model]
-    LoadModel --> Predict[Run Inference<br/>Generate Predictions]
-    Predict --> Response[Return Fraud Scores<br/>200 OK]
+    Validate -->|Yes| CheckFeat{Features<br/>Available in<br/>Redis?}
+    
+    CheckFeat -->|No| Route1[Route 1: Distributed<br/>Feature Engineering]
+    CheckFeat -->|Yes| Route2[Route 2: Distributed<br/>Inference]
+    
+    Route1 --> DistFE[Distribute Nodes<br/>to Feature Workers]
+    DistFE --> CalcFeat[Workers Calculate Features<br/>Access PostgreSQL & Neo4j]
+    CalcFeat --> StoreFeat[Store Features<br/>in Redis]
+    StoreFeat --> Route2
+    
+    Route2 --> SplitBatch[Split Transaction Batch<br/>e.g., 1000 → 5×200]
+    SplitBatch --> ParallelInf[Parallel Inference Workers<br/>Process Batches]
+    ParallelInf --> GetFeat[Get Features from Redis<br/>Create Input Tuples]
+    GetFeat --> RunInf[Run GNN Inference Model<br/>Process Each Batch]
+    RunInf --> Aggregate[Aggregate Results<br/>from All Workers]
+    Aggregate --> Response[Return Fraud Scores<br/>200 OK]
     Response --> Wait
     
     style Start fill:#e1ffe1
     style Wait fill:#fff5e1
+    style Route1 fill:#fff5e1
+    style Route2 fill:#e1f5ff
     style Response fill:#e1ffe1
     style Error fill:#ffe1e1
 ```
@@ -193,6 +207,7 @@ sequenceDiagram
     participant PostgreSQL
     participant Trainer
     participant FeatureExtractor
+    participant InferenceWorkers
 
     Note over PostgreSQL,FeatureExtractor: Initialization Phase
     PostgreSQL->>Kafka: Publish transactions
@@ -203,12 +218,40 @@ sequenceDiagram
     FeatureExtractor->>Trainer: Provide features
     Trainer->>Trainer: Train GNN model
     
-    Note over Client,API: Inference Phase
-    Client->>API: POST /predict {node_ids}
-    API->>Redis: GET features:node:{id}
-    Redis-->>API: Return features
-    API->>API: Load GNN model
-    API->>API: Run inference
+    Note over Client,API: Inference Phase - Route Decision
+    Client->>API: POST /predict {transaction_batch}
+    API->>Redis: Check if features available
+    
+    alt Features Not Available (Route 1)
+        Note over API,FeatureExtractor: Distributed Feature Engineering
+        API->>FeatureExtractor: Distribute nodes to workers
+        par Parallel Feature Extraction
+            FeatureExtractor->>PostgreSQL: Query transaction data
+            FeatureExtractor->>Neo4j: Query graph data
+            FeatureExtractor->>FeatureExtractor: Calculate features
+            FeatureExtractor->>Redis: Store computed features
+        end
+    end
+    
+    Note over API,InferenceWorkers: Distributed Inference (Route 2)
+    API->>API: Split batch (e.g., 1000 → 5×200)
+    par Parallel Inference Processing
+        API->>InferenceWorkers: Worker 1: 200 transactions
+        API->>InferenceWorkers: Worker 2: 200 transactions
+        API->>InferenceWorkers: Worker 3: 200 transactions
+        API->>InferenceWorkers: Worker 4: 200 transactions
+        API->>InferenceWorkers: Worker 5: 200 transactions
+    end
+    
+    par Get Features & Process
+        InferenceWorkers->>Redis: GET features for transactions
+        Redis-->>InferenceWorkers: Return features
+        InferenceWorkers->>InferenceWorkers: Create input tuples
+        InferenceWorkers->>InferenceWorkers: Run GNN inference
+        InferenceWorkers->>API: Send results
+    end
+    
+    API->>API: Aggregate results
     API-->>Client: Return fraud scores
 ```
 
@@ -447,11 +490,64 @@ flowchart TD
     
     Predict --> ValidateReq{Validate<br/>Request Body}
     ValidateReq -->|Invalid| Error1[400 Bad Request]
-    ValidateReq -->|Valid| GetFeat[Get Features<br/>from Redis]
+    ValidateReq -->|Valid| CheckFeat{Features<br/>Available?}
     
-    GetFeat --> LoadMod[Load GNN Model]
-    LoadMod --> RunInf[Run Inference]
-    RunInf --> Format[Format Response]
+    CheckFeat -->|No| Route1[Route 1: Distributed<br/>Feature Engineering]
+    CheckFeat -->|Yes| Route2[Route 2: Distributed<br/>Inference]
+    
+    subgraph "Route 1: Distributed Feature Engineering"
+        Route1 --> DistFE[Distribute Nodes<br/>to Feature Workers]
+        DistFE --> FE1[Feature Worker 1<br/>Calculate Features]
+        DistFE --> FE2[Feature Worker 2<br/>Calculate Features]
+        DistFE --> FE3[Feature Worker N<br/>Calculate Features]
+        
+        FE1 --> Access1[Access Central DB<br/>PostgreSQL & Neo4j]
+        FE2 --> Access2[Access Central DB<br/>PostgreSQL & Neo4j]
+        FE3 --> Access3[Access Central DB<br/>PostgreSQL & Neo4j]
+        
+        Access1 --> Store1[Store Features<br/>in Redis]
+        Access2 --> Store2[Store Features<br/>in Redis]
+        Access3 --> Store3[Store Features<br/>in Redis]
+        
+        Store1 --> Route2
+        Store2 --> Route2
+        Store3 --> Route2
+    end
+    
+    subgraph "Route 2: Distributed Inference"
+        Route2 --> BatchSplit[Split Transaction Batch<br/>e.g., 1000 txns → 5×200]
+        BatchSplit --> Inf1[Inference Worker 1<br/>200 transactions]
+        BatchSplit --> Inf2[Inference Worker 2<br/>200 transactions]
+        BatchSplit --> Inf3[Inference Worker 3<br/>200 transactions]
+        BatchSplit --> Inf4[Inference Worker 4<br/>200 transactions]
+        BatchSplit --> Inf5[Inference Worker 5<br/>200 transactions]
+        
+        Inf1 --> GetFeat1[Get Features<br/>from Redis]
+        Inf2 --> GetFeat2[Get Features<br/>from Redis]
+        Inf3 --> GetFeat3[Get Features<br/>from Redis]
+        Inf4 --> GetFeat4[Get Features<br/>from Redis]
+        Inf5 --> GetFeat5[Get Features<br/>from Redis]
+        
+        GetFeat1 --> CreateTuple1[Create Input Tuples<br/>for GNN Model]
+        GetFeat2 --> CreateTuple2[Create Input Tuples<br/>for GNN Model]
+        GetFeat3 --> CreateTuple3[Create Input Tuples<br/>for GNN Model]
+        GetFeat4 --> CreateTuple4[Create Input Tuples<br/>for GNN Model]
+        GetFeat5 --> CreateTuple5[Create Input Tuples<br/>for GNN Model]
+        
+        CreateTuple1 --> RunInf1[Run Inference<br/>GNN Model]
+        CreateTuple2 --> RunInf2[Run Inference<br/>GNN Model]
+        CreateTuple3 --> RunInf3[Run Inference<br/>GNN Model]
+        CreateTuple4 --> RunInf4[Run Inference<br/>GNN Model]
+        CreateTuple5 --> RunInf5[Run Inference<br/>GNN Model]
+        
+        RunInf1 --> Aggregate[Aggregate Results<br/>from All Workers]
+        RunInf2 --> Aggregate
+        RunInf3 --> Aggregate
+        RunInf4 --> Aggregate
+        RunInf5 --> Aggregate
+    end
+    
+    Aggregate --> Format[Format Response]
     Format --> Return1[200 OK<br/>Fraud Scores]
     
     Features --> ValidateQuery{Validate<br/>Query Params}
@@ -469,6 +565,8 @@ flowchart TD
     
     style Client fill:#e1ffe1
     style API fill:#fff5e1
+    style Route1 fill:#fff5e1
+    style Route2 fill:#e1f5ff
     style Return1 fill:#e1f5ff
     style Return2 fill:#e1f5ff
     style Return3 fill:#e1f5ff
@@ -478,55 +576,122 @@ flowchart TD
 
 ---
 
-## 12. Distributed Training Architecture
+## 12. Distributed Feature Engineering Architecture
 
 ```mermaid
 graph TB
-    subgraph "Master Node (Rank 0)"
-        M[Trainer-0<br/>Master Process]
-        M -->|Broadcast| W1
-        M -->|Broadcast| W2
-        M -->|Broadcast| W3
-        M -->|Aggregate| AG[Aggregate Gradients]
+    subgraph "Feature Extraction Coordinator"
+        FE_COORD[Feature Coordinator<br/>Distributes Node Assignments]
     end
     
-    subgraph "Worker Nodes"
-        W1[Trainer-1<br/>Rank 1]
-        W2[Trainer-2<br/>Rank 2]
-        W3[Trainer-3<br/>Rank 3]
+    subgraph "Feature Extraction Workers"
+        FE_W1[Feature Worker 1<br/>Calculate Assigned Features]
+        FE_W2[Feature Worker 2<br/>Calculate Assigned Features]
+        FE_W3[Feature Worker 3<br/>Calculate Assigned Features]
+        FE_WN[Feature Worker N<br/>Calculate Assigned Features]
     end
     
-    subgraph "Shared Resources"
-        G[Graph Partition 0]
-        G1[Graph Partition 1]
-        G2[Graph Partition 2]
-        G3[Graph Partition 3]
-        F[(Feature Store<br/>Redis/Parquet)]
-        M_STORE[(Model Storage)]
+    subgraph "Central Data Sources"
+        PG_CENTRAL[(PostgreSQL<br/>Transaction Database)]
+        NEO_CENTRAL[(Neo4j<br/>Graph Database)]
     end
     
-    M -->|Load| G
-    M -->|Read| F
-    W1 -->|Load| G1
-    W1 -->|Read| F
-    W2 -->|Load| G2
-    W2 -->|Read| F
-    W3 -->|Load| G3
-    W3 -->|Read| F
+    subgraph "Feature Storage"
+        REDIS_FEAT[(Redis<br/>Feature Store)]
+    end
     
-    W1 -->|Send Gradients| AG
-    W2 -->|Send Gradients| AG
-    W3 -->|Send Gradients| AG
+    FE_COORD -->|Assign Nodes| FE_W1
+    FE_COORD -->|Assign Nodes| FE_W2
+    FE_COORD -->|Assign Nodes| FE_W3
+    FE_COORD -->|Assign Nodes| FE_WN
     
-    AG -->|Update Model| M_STORE
-    M_STORE -->|Sync| M
-    M_STORE -->|Sync| W1
-    M_STORE -->|Sync| W2
-    M_STORE -->|Sync| W3
+    FE_W1 -->|Query| PG_CENTRAL
+    FE_W1 -->|Query| NEO_CENTRAL
+    FE_W2 -->|Query| PG_CENTRAL
+    FE_W2 -->|Query| NEO_CENTRAL
+    FE_W3 -->|Query| PG_CENTRAL
+    FE_W3 -->|Query| NEO_CENTRAL
+    FE_WN -->|Query| PG_CENTRAL
+    FE_WN -->|Query| NEO_CENTRAL
     
-    style M fill:#e1ffe1
-    style AG fill:#fff5e1
-    style M_STORE fill:#e1f5ff
+    FE_W1 -->|Store Features| REDIS_FEAT
+    FE_W2 -->|Store Features| REDIS_FEAT
+    FE_W3 -->|Store Features| REDIS_FEAT
+    FE_WN -->|Store Features| REDIS_FEAT
+    
+    style FE_COORD fill:#fff5e1
+    style REDIS_FEAT fill:#ffe1f5
+    style PG_CENTRAL fill:#e1f5ff
+    style NEO_CENTRAL fill:#e1f5ff
+```
+
+---
+
+## 13. Distributed Inference Architecture
+
+```mermaid
+graph TB
+    subgraph "User Input"
+        USER[User Submits<br/>Transaction Data<br/>e.g., 1000 transactions]
+    end
+    
+    subgraph "System Processing"
+        API[API Receives<br/>Transaction Batch]
+        SPLIT[Split into Smaller Batches<br/>1000 transactions → 5 batches of 200]
+    end
+    
+    subgraph "Parallel Processing Workers"
+        W1[Worker 1<br/>Processes 200 transactions]
+        W2[Worker 2<br/>Processes 200 transactions]
+        W3[Worker 3<br/>Processes 200 transactions]
+        W4[Worker 4<br/>Processes 200 transactions]
+        W5[Worker 5<br/>Processes 200 transactions]
+    end
+    
+    subgraph "Data Sources"
+        REDIS[(Feature Store<br/>Redis)]
+        MODEL[(Fraud Detection Model<br/>GNN Model)]
+    end
+    
+    subgraph "Output"
+        RESULTS[Combined Results<br/>Fraud Predictions<br/>for All Transactions]
+    end
+    
+    USER -->|Submit Transactions| API
+    API -->|Split Batch| SPLIT
+    
+    SPLIT -->|Batch 1| W1
+    SPLIT -->|Batch 2| W2
+    SPLIT -->|Batch 3| W3
+    SPLIT -->|Batch 4| W4
+    SPLIT -->|Batch 5| W5
+    
+    W1 -->|Get Features| REDIS
+    W2 -->|Get Features| REDIS
+    W3 -->|Get Features| REDIS
+    W4 -->|Get Features| REDIS
+    W5 -->|Get Features| REDIS
+    
+    W1 -->|Use Model| MODEL
+    W2 -->|Use Model| MODEL
+    W3 -->|Use Model| MODEL
+    W4 -->|Use Model| MODEL
+    W5 -->|Use Model| MODEL
+    
+    W1 -->|Send Results| RESULTS
+    W2 -->|Send Results| RESULTS
+    W3 -->|Send Results| RESULTS
+    W4 -->|Send Results| RESULTS
+    W5 -->|Send Results| RESULTS
+    
+    RESULTS -->|Return to User| USER
+    
+    style USER fill:#e1ffe1
+    style API fill:#fff5e1
+    style SPLIT fill:#fff5e1
+    style REDIS fill:#ffe1f5
+    style MODEL fill:#e1f5ff
+    style RESULTS fill:#e1ffe1
 ```
 
 ---
@@ -551,8 +716,9 @@ graph TB
 8. **Training Pipeline** - Model training process
 9. **Kafka Message Flow** - Message queue architecture
 10. **Graph Structure** - Neo4j graph schema
-11. **API Endpoint Flow** - Request/response handling
-12. **Distributed Training** - Multi-worker training setup
+11. **API Endpoint Flow** - Request/response handling with two-route architecture
+12. **Distributed Feature Engineering Architecture** - Parallel feature extraction from central databases
+13. **Distributed Inference Architecture** - Parallel fraud detection processing for user-submitted transactions
 
 ---
 
