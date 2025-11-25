@@ -10,15 +10,22 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 
-# Storage dependencies (optional - only needed for specific backends)
-redis>=5.0.0  # Optional: only needed for Redis backend
-pyarrow>=14.0.0  # Optional: only needed for Parquet backend
+# Database dependencies
+psycopg2-binary>=2.9.9  # PostgreSQL
+neo4j>=5.14.0  # Neo4j graph database
+
+# Message queue
+kafka-python>=2.0.2  # Apache Kafka
+
+# Storage dependencies
+redis>=5.0.0  # Redis feature store
+pyarrow>=14.0.0  # Parquet backend
 
 # Graph analysis
 networkx>=3.1
 
 # Utilities
-python-dotenv>=1.0.0  # Optional: for .env file support
+python-dotenv>=1.0.0  # For .env file support
 pyyaml>=6.0
 
 # Development dependencies (optional)

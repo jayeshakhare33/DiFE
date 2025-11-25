@@ -427,13 +427,25 @@ class FeatureExtractor:
             return features
         
         # Get current timestamp (assuming we have a reference)
-        current_timestamp = transaction_df.get('timestamp', pd.Series([0])).max() if 'timestamp' in transaction_df.columns else 0
+        if transaction_df is not None and 'timestamp' in transaction_df.columns:
+            current_timestamp = float(transaction_df['timestamp'].max())
+        else:
+            current_timestamp = 0.0
         
         for i, node_id in enumerate(node_ids):
             # Get all timestamps for this user
             timestamps = []
             hours = []
             days_of_week = []
+            
+            # Extract from transaction_df if available
+            if transaction_df is not None and 'user_id' in transaction_df.columns:
+                user_txs = transaction_df[transaction_df['user_id'] == node_id]
+                if 'timestamp' in user_txs.columns:
+                    user_timestamps = user_txs['timestamp'].values
+                    # Ensure timestamps are floats
+                    user_timestamps = [float(ts) for ts in user_timestamps]
+                    timestamps.extend(user_timestamps)
             
             # Extract from edge data if available
             for etype in g.canonical_etypes:
@@ -442,7 +454,9 @@ class FeatureExtractor:
                     if 'timestamp' in g.edges[etype].data:
                         edge_timestamps = g.edges[etype].data['timestamp'].numpy()
                         if len(edge_timestamps) > 0:
-                            timestamps.extend(edge_timestamps.tolist())
+                            # Ensure timestamps are floats
+                            edge_timestamps = [float(ts) for ts in edge_timestamps.tolist()]
+                            timestamps.extend(edge_timestamps)
                             # Extract hour and day of week if available
                             if 'hour_of_day' in g.edges[etype].data:
                                 hours.extend(g.edges[etype].data['hour_of_day'].numpy().tolist())
@@ -708,9 +722,17 @@ class EdgeFeatureExtractor:
         # Find the edge type
         etype = None
         for canonical_etype in g.canonical_etypes:
-            if edge_type in str(canonical_etype) or edge_type == canonical_etype[1]:
-                etype = canonical_etype
-                break
+            # Handle both tuple and string edge types
+            if isinstance(edge_type, tuple):
+                # Direct tuple comparison
+                if edge_type == canonical_etype:
+                    etype = canonical_etype
+                    break
+            else:
+                # String comparison - check if string is in canonical type or matches middle element
+                if edge_type in str(canonical_etype) or edge_type == canonical_etype[1]:
+                    etype = canonical_etype
+                    break
         
         if etype is None:
             # Try to use the first edge type if available

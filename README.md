@@ -212,20 +212,32 @@ python -m gnn_training.distributed_trainer
 - **Batch Processing**: Transactions are processed in batches
 - **Fault Tolerance**: System handles failures gracefully with retries
 
+## 📚 Documentation
+
+All documentation has been organized in the [`readme/`](./readme/) folder:
+
+- **[📖 Documentation Index](./readme/README.md)** - Complete documentation index
+- **[🚀 Setup Guides](./readme/setup/)** - Installation and setup instructions
+- **[🏗️ Architecture](./readme/architecture/)** - System design and architecture
+- **[🔢 Features](./readme/features/)** - Feature engineering documentation
+- **[📖 Guides](./readme/guides/)** - Step-by-step workflows
+- **[🔧 Troubleshooting](./readme/troubleshooting/)** - Common issues and solutions
+
+### Quick Links
+
+- **New to the project?** → [Complete Setup Guide](./readme/setup/COMPLETE_SETUP_GUIDE.md)
+- **Understanding the system?** → [Project Overview](./readme/architecture/PROJECT_OVERVIEW.md)
+- **Need help?** → [Troubleshooting](./readme/troubleshooting/)
+- **Distributed computing?** → [Distributed Implementation Guide](./readme/architecture/DISTRIBUTED_IMPLEMENTATION_GUIDE.md)
+
 ## Troubleshooting
 
-### Redis Connection Issues
-- Ensure Redis is running: `docker-compose up -d redis`
-- Check Redis connection: `redis-cli ping`
+For detailed troubleshooting guides, see the [Troubleshooting Documentation](./readme/troubleshooting/).
 
-### Model Not Found
-- Ensure model files exist in `./model/` directory
-- Run training first: `python main.py --mode train`
-
-### Out of Memory
-- Reduce `world_size` in distributed config
-- Reduce `chunk_size` in graph processing config
-- Use smaller batch sizes
+Quick fixes:
+- **Redis Connection Issues**: Ensure Redis is running: `docker-compose up -d redis`
+- **Model Not Found**: Run training first: `python main.py --mode train`
+- **Out of Memory**: Reduce `world_size` in distributed config
 
 ## License
 

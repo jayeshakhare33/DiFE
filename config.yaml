@@ -48,6 +48,34 @@ storage:
     db: 0
     password: null
 
+# Database configuration
+database:
+  postgres:
+    host: localhost
+    port: 5432
+    database: fraud_detection
+    user: postgres
+    password: M4RC0
+  neo4j:
+    uri: bolt://localhost:7687
+    user: neo4j
+    password: neo4j123
+
+# Kafka configuration
+kafka:
+  bootstrap_servers:
+    - localhost:9092
+  topics:
+    transactions_raw: transactions-raw
+    feature_extraction: feature-extraction
+    features_computed: features-computed
+  consumer:
+    group_id: fraud-detection-group
+    auto_offset_reset: earliest
+  producer:
+    compression_type: gzip
+    acks: all
+
 # API configuration
 api:
   host: 0.0.0.0

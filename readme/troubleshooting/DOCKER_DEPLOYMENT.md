@@ -50,7 +50,6 @@ This guide explains how to deploy the GNN fraud detection system across multiple
 - Communicate via PyTorch Distributed
 
 ## Prerequisites
-
 1. **Docker & Docker Compose** installed
 2. **Features generated** (Parquet files in `./data/features/`)
 3. **Sufficient resources**:
