@@ -16,7 +16,7 @@ Create a Docker Compose environment where:
 | Docker Desktop (Windows) | `docker --version` |
 | Docker Compose v2 | `docker compose version` |
 | Python 3.9+ on your machine | `python --version` |
-| `./data/` folder populated | Must have `features.csv` + `relation_*.csv` from notebook |
+| `./data/` folder populated | Must have `features.csv` + `relation_*.csv` from `gnn/graph_utils.py` |
 
 **Install Docker Desktop for Windows:**
 https://docs.docker.com/desktop/install/windows-install/

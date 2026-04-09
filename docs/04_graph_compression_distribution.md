@@ -2,7 +2,7 @@
 
 ## Goal
 
-After `10_data_loader.ipynb` creates the processed graph data in `./data/`, this step:
+After `gnn/graph_utils.py` (via `train.py`) constructs the graph and writes edge lists + features to `./data/`, this step:
 
 1. **Compresses** the graph (edge lists + node features) into a ZIP archive.
 2. **Distributes** a full copy of that archive to every container that will run feature extraction.
@@ -16,7 +16,7 @@ Graph Construction → Graph Compression (ZIP) → Graph Distribution (Copy to A
 
 ## What the Graph Data Looks Like (already produced)
 
-After the data loader notebook runs, `./data/` contains:
+After the graph construction pipeline (`train.py` → `gnn/graph_utils.py`) runs, `./data/` contains:
 
 | File | Description |
 |------|-------------|

@@ -8,11 +8,11 @@
 Data Sources (CSV)
       │
       ▼
-Data Preprocessing          ✅  DONE  (10_data_loader.ipynb)
+Data Preprocessing          ✅  DONE  (gnn/data.py + gnn/graph_utils.py)
 Clean, Validate, Engineer
       │
       ▼
-Graph Construction          ✅  DONE  (gnn/graph_utils.py + 10_data_loader.ipynb)
+Graph Construction          ✅  DONE  (gnn/graph_utils.py + train.py)
 Nodes, Edges, Features
       │
       ├──────────────────────► Graph Compression (ZIP)   🔲 Step 4
@@ -52,7 +52,7 @@ Nodes, Edges, Features
 
 | Component | File | Notes |
 |-----------|------|-------|
-| Data loading & preprocessing | `10_data_loader.ipynb` | Reads IEEE CSVs, merges identity, builds edge lists |
+| Data loading & preprocessing | `gnn/data.py` + `gnn/graph_utils.py` | Reads processed edge lists + features, builds PyG HeteroData |
 | Graph construction | `gnn/graph_utils.py` | Builds a PyG HeteroData object |
 | GNN model definition | `gnn/pytorch_model.py` | HeteroRGCN model |
 | Training loop | `train.py` | Full-graph RGCN training |
