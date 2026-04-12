@@ -1,7 +1,8 @@
 # Core dependencies
-torch>=2.0.0
-dgl>=2.0.0
-numpy>=1.24.0
+# Pinned to specific versions to prevent PyTorch/DGL C++ library mismatch and NumPy 2.x incompatibilities
+torch==2.2.1
+dgl==2.2.1
+numpy>=1.24.0,<2.0.0
 pandas>=2.0.0
 scipy>=1.10.0  # Used for stats.mode in feature extraction
 
