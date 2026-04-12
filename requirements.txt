@@ -1,0 +1,35 @@
+# Core dependencies
+torch>=2.0.0
+dgl>=2.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0  # Used for stats.mode in feature extraction
+
+# API dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# Database dependencies
+psycopg2-binary>=2.9.9  # PostgreSQL
+neo4j>=5.14.0  # Neo4j graph database
+
+# Message queue
+kafka-python>=2.0.2  # Apache Kafka
+
+# Storage dependencies
+redis>=5.0.0  # Redis feature store
+pyarrow>=14.0.0  # Parquet backend
+
+# Graph analysis
+networkx>=3.1
+
+# Utilities
+python-dotenv>=1.0.0  # For .env file support
+pyyaml>=6.0
+
+# Development dependencies (optional)
+pytest>=7.4.0
+black>=23.0.0
+flake8>=6.1.0
+

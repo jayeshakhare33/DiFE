@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+dgl_env/
+./dgl_env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data files
+*.csv
+*.parquet
+*.pkl
+*.pth
+*.zip
+data/
+model/
+output/
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Docker
+.dockerignore
+
+
+./storage/
+./storage/india_fraud_data_explainable/
+
+# Specific data files (explicitly listed for clarity)
+users.csv
+transactions.csv
+transactions.zip
+locations.csv
+datasets.zip
+
+# Temporary test files
+test_local.py
+

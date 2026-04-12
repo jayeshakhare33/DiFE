@@ -1,0 +1,359 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fraud-detection-postgres
+    environment:
+      POSTGRES_DB: fraud_detection
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fraud-detection-network
+    restart: unless-stopped
+
+  # Neo4j Graph Database
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: fraud-detection-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/neo4j123
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_apoc_export_file_enabled: true
+      NEO4J_apoc_import_file_enabled: true
+      NEO4J_dbms_memory_heap_max__size: 2G
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - neo4j-import:/var/lib/neo4j/import
+      - neo4j-plugins:/plugins
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - fraud-detection-network
+    restart: unless-stopped
+
+  # Zookeeper (Required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: fraud-detection-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - fraud-detection-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: fraud-detection-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - fraud-detection-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Kafka UI (Optional - for monitoring)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: fraud-detection-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9093
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - fraud-detection-network
+    restart: unless-stopped
+
+  # Redis service for feature store and inter-container communication
+  redis:
+    image: redis:7-alpine
+    container_name: fraud-detection-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - fraud-detection-network
+    restart: unless-stopped
+
+  # Feature Loader Service - Preloads features into Redis for fast access
+  feature-loader:
+    build: .
+    container_name: fraud-detection-feature-loader
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+    environment:
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python scripts/load_features_to_redis.py
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fraud-detection-network
+    restart: "no"  # Run once to load features
+
+  # API service
+  api:
+    build: .
+    container_name: fraud-detection-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro  # Shared read-only feature storage
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - FEATURE_STORE_BACKEND=redis  # Use Redis for fast access
+      - REDIS_HOST=redis  # Use service name for container communication
+      - REDIS_PORT=6379
+      - MODEL_PATH=/app/model/model.pth
+      - METADATA_PATH=/app/model/metadata.pkl
+      - DEVICE=cpu
+      - STORAGE_BASE_DIR=/app/data/features
+    depends_on:
+      redis:
+        condition: service_healthy
+      feature-loader:
+        condition: service_completed_successfully
+    networks:
+      - fraud-detection-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # Training Worker 0 (Master)
+  trainer-0:
+    build: .
+    container_name: fraud-detection-trainer-0
+    hostname: trainer-0
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro  # Shared feature storage
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - RANK=0
+      - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0  # Use container hostname
+      - MASTER_PORT=12355
+      - BACKEND=gloo
+      - DEVICE=cpu
+      - FEATURE_STORE_BACKEND=parquet  # Use Parquet for training
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=0 --master_addr=trainer-0 --master_port=12355 main.py --mode train
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    profiles:
+      - training
+
+  # Training Worker 1
+  trainer-1:
+    build: .
+    container_name: fraud-detection-trainer-1
+    hostname: trainer-1
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - RANK=1
+      - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0
+      - MASTER_PORT=12355
+      - BACKEND=gloo
+      - DEVICE=cpu
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=1 --master_addr=trainer-0 --master_port=12355 main.py --mode train
+    depends_on:
+      - trainer-0
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    profiles:
+      - training
+
+  # Training Worker 2
+  trainer-2:
+    build: .
+    container_name: fraud-detection-trainer-2
+    hostname: trainer-2
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - RANK=2
+      - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0
+      - MASTER_PORT=12355
+      - BACKEND=gloo
+      - DEVICE=cpu
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=2 --master_addr=trainer-0 --master_port=12355 main.py --mode train
+    depends_on:
+      - trainer-0
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    profiles:
+      - training
+
+  # Training Worker 3
+  trainer-3:
+    build: .
+    container_name: fraud-detection-trainer-3
+    hostname: trainer-3
+    volumes:
+      - ./data:/app/data
+      - ./data/features:/app/data/features:ro
+      - ./model:/app/model
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - RANK=3
+      - WORLD_SIZE=4
+      - MASTER_ADDR=trainer-0
+      - MASTER_PORT=12355
+      - BACKEND=gloo
+      - DEVICE=cpu
+      - FEATURE_STORE_BACKEND=parquet
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_BASE_DIR=/app/data/features
+    command: python -m torch.distributed.run --nproc_per_node=1 --nnodes=4 --node_rank=3 --master_addr=trainer-0 --master_port=12355 main.py --mode train
+    depends_on:
+      - trainer-0
+    networks:
+      - fraud-detection-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    profiles:
+      - training
+
+volumes:
+  postgres-data:
+    driver: local
+  neo4j-data:
+    driver: local
+  neo4j-logs:
+    driver: local
+  neo4j-import:
+    driver: local
+  neo4j-plugins:
+    driver: local
+  zookeeper-data:
+    driver: local
+  zookeeper-logs:
+    driver: local
+  kafka-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  fraud-detection-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+

@@ -1,0 +1,74 @@
+# Docker Configuration for Multi-Container Setup
+# This config uses container service names for networking
+
+# Model configuration
+model:
+  in_size: 360
+  hidden_size: 16
+  out_size: 2
+  n_layers: 3
+  embedding_size: 360
+
+# Training configuration
+training:
+  lr: 0.01
+  weight_decay: 5e-4
+  n_epochs: 100
+  batch_size: 1024
+  save_path: /app/model/best_model.pth
+
+# Distributed training configuration
+distributed:
+  world_size: 4
+  backend: gloo  # or 'nccl' for GPU
+  master_addr: trainer-0  # Use container hostname
+  master_port: "12355"
+
+# Graph processing configuration
+graph_processing:
+  num_workers: 4
+  chunk_size: 10000
+  partition_method: metis  # or 'random'
+  num_parts: 4
+
+# Feature engineering configuration
+feature_engineering:
+  extract_degree: true
+  extract_centrality: true
+  extract_clustering: true
+  extract_neighbor: true
+  centrality_sample_size: 1000
+
+# Storage configuration for Docker
+storage:
+  backend: parquet  # Use Parquet for persistent storage
+  base_dir: /app/data/features  # Container path
+  redis:
+    host: redis  # Use service name for container communication
+    port: 6379
+    db: 0
+    password: null
+
+# API configuration
+api:
+  host: 0.0.0.0  # Listen on all interfaces
+  port: 8000
+  workers: 4
+  reload: false
+
+# Data paths (container paths)
+data:
+  transaction_path: /app/storage/india_fraud_data_explainable/transactions.csv
+  identity_path: null
+  users_path: /app/storage/india_fraud_data_explainable/users.csv
+  locations_path: /app/storage/india_fraud_data_explainable/locations.csv
+  output_dir: /app/data
+  feature_file: features.csv
+  labels_file: tags.csv
+  test_file: test.csv
+  sender_col: sender_id
+  receiver_col: receiver_id
+  amount_col: amount
+  timestamp_col: timestamp
+  fraud_col: is_fraud_txn
+
