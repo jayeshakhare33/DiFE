@@ -6,6 +6,8 @@ numpy>=1.24.0,<2.0.0
 pandas>=2.0.0
 scipy>=1.10.0  # Used for stats.mode in feature extraction
 
+torchdata==0.7.1
+
 # API dependencies
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
@@ -29,8 +31,11 @@ networkx>=3.1
 python-dotenv>=1.0.0  # For .env file support
 pyyaml>=6.0
 
+# AWS & HTTP utilities (new)
+boto3>=1.34.0      # AWS SDK used for EC2 provisioning, S3 uploads, termination
+requests>=2.31.0   # HTTP client for callbacks from workers to master
+
 # Development dependencies (optional)
 pytest>=7.4.0
 black>=23.0.0
 flake8>=6.1.0
-

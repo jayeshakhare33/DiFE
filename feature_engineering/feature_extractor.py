@@ -767,7 +767,7 @@ class EdgeFeatureExtractor:
             # Extract from timestamp if available
             if 'timestamp' in features:
                 timestamps = features['timestamp'].numpy()
-                hours = np.array([datetime.fromtimestamp(ts).hour if ts > 0 else 0 for ts in timestamps])
+                hours = np.array([datetime.fromtimestamp(float(ts)).hour if ts > 0 else 0 for ts in timestamps])
                 features['hour_of_day'] = th.from_numpy(hours.astype(np.float32))
             else:
                 features['hour_of_day'] = th.zeros(n_edges)
@@ -779,7 +779,7 @@ class EdgeFeatureExtractor:
             # Extract from timestamp if available
             if 'timestamp' in features:
                 timestamps = features['timestamp'].numpy()
-                days = np.array([datetime.fromtimestamp(ts).weekday() if ts > 0 else 0 for ts in timestamps])
+                days = np.array([datetime.fromtimestamp(float(ts)).weekday() if ts > 0 else 0 for ts in timestamps])
                 features['day_of_week'] = th.from_numpy(days.astype(np.float32))
             else:
                 features['day_of_week'] = th.zeros(n_edges)
