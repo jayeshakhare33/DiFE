@@ -43,22 +43,16 @@ echo.
 echo ========================================
 echo Service URLs
 echo ========================================
-echo PostgreSQL:    localhost:5432
 echo Neo4j Browser: http://localhost:7474
 echo Neo4j Bolt:    bolt://localhost:7687
-echo Kafka:         localhost:9092
-echo Kafka UI:      http://localhost:8080
-echo Redis:         localhost:6379
 echo.
 
 echo ========================================
 echo Next Steps
 echo ========================================
 echo 1. Wait 15-30 seconds for all services to start
-echo 2. Test connections: python scripts\test_postgres.py
-echo 3. Initialize Neo4j: Open http://localhost:7474
-echo 4. Create Kafka topics: scripts\create_kafka_topics.bat
-echo 5. Extract features: python scripts\extract_all_features.py
+echo 2. Initialize Neo4j: Open http://localhost:7474
+echo 3. Extract features: python scripts\extract_all_features.py
 echo.
 
 echo To view logs: docker-compose logs -f

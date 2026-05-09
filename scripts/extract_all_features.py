@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Complete Feature Extraction Pipeline
-Extracts all 62 features (50 node + 12 edge) and stores in Redis
+Extracts all 62 features (50 node + 12 edge) and stores in Parquet
 """
 import sys
 import os
@@ -14,8 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 import numpy as np
 from neo4j import GraphDatabase
-import redis
-import pickle
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -31,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class CompleteFeatureExtractor:
-    """Extract all features from Neo4j and store in Redis"""
+    """Extract all features from Neo4j and store in Parquet"""
     
     def __init__(self):
         """Initialize connections"""
@@ -43,27 +41,11 @@ class CompleteFeatureExtractor:
         self.neo4j_driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
         logger.info(f"Connected to Neo4j at {neo4j_uri}")
         
-        # Redis connection
-        redis_host = os.getenv('REDIS_HOST', 'localhost')
-        redis_port = int(os.getenv('REDIS_PORT', '6379'))
-        redis_password = os.getenv('REDIS_PASSWORD', None)
-        redis_db = int(os.getenv('REDIS_DB', '0'))
-        
-        self.redis_client = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            password=redis_password,
-            db=redis_db,
-            decode_responses=False
-        )
-        self.redis_client.ping()
-        logger.info(f"Connected to Redis at {redis_host}:{redis_port}")
-        
         # Feature extractors
         self.node_extractor = FeatureExtractor()
         self.edge_extractor = EdgeFeatureExtractor()
         
-        # Feature store (for Parquet backup)
+        # Feature store (Parquet)
         self.feature_store = FeatureStore(
             backend_type='parquet',
             base_dir='./data/features'
@@ -282,50 +264,8 @@ class CompleteFeatureExtractor:
         logger.info(f"Extracted {len(edge_df.columns)} edge features for {len(edge_df)} edges")
         return edge_df
     
-    def store_in_redis(self, node_features: pd.DataFrame, edge_features: Optional[pd.DataFrame] = None):
-        """Store features in Redis"""
-        logger.info("Storing features in Redis...")
-        
-        # Store full node features DataFrame
-        if not node_features.empty:
-            serialized = pickle.dumps(node_features)
-            self.redis_client.set('features:node_features', serialized)
-            logger.info(f"Stored node features DataFrame ({len(node_features)} nodes, {len(node_features.columns)} features)")
-            
-            # Store individual node features for fast lookup
-            for node_id, row in node_features.iterrows():
-                key = f'features:node:{node_id}'
-                node_dict = row.to_dict()
-                serialized = pickle.dumps(node_dict)
-                self.redis_client.set(key, serialized, ex=86400)  # 24h TTL
-            logger.info(f"Stored {len(node_features)} individual node feature records")
-            
-            # Store metadata
-            metadata = {
-                'feature_names': node_features.columns.tolist(),
-                'node_count': len(node_features),
-                'last_update': datetime.now().isoformat(),
-                'schema_version': '1.0'
-            }
-            self.redis_client.set('features:metadata:node', json.dumps(metadata).encode('utf-8'), ex=3600)
-        
-        # Store full edge features DataFrame
-        if edge_features is not None and not edge_features.empty:
-            serialized = pickle.dumps(edge_features)
-            self.redis_client.set('features:edge_features', serialized)
-            logger.info(f"Stored edge features DataFrame ({len(edge_features)} edges, {len(edge_features.columns)} features)")
-            
-            # Store metadata
-            metadata = {
-                'feature_names': edge_features.columns.tolist(),
-                'edge_count': len(edge_features),
-                'last_update': datetime.now().isoformat(),
-                'schema_version': '1.0'
-            }
-            self.redis_client.set('features:metadata:edge', json.dumps(metadata).encode('utf-8'), ex=3600)
-    
     def store_in_parquet(self, node_features: pd.DataFrame, edge_features: Optional[pd.DataFrame] = None):
-        """Store features in Parquet as backup"""
+        """Store features in Parquet"""
         logger.info("Storing features in Parquet...")
         
         if not node_features.empty:
@@ -350,8 +290,7 @@ class CompleteFeatureExtractor:
             if g is None:
                 logger.error("Failed to create graph. Check Neo4j data.")
                 logger.error("\nTo fix this:")
-                logger.error("1. Ensure Neo4j has data: python scripts/sync_postgres_to_neo4j.py")
-                logger.error("2. Or manually initialize Neo4j: Open http://localhost:7474 and run scripts/init_neo4j.cypher")
+                logger.error("1. Ensure Neo4j has data: Open http://localhost:7474 and run scripts/init_neo4j.cypher")
                 return False
             
             # Step 2: Extract node features
@@ -362,12 +301,8 @@ class CompleteFeatureExtractor:
             logger.info("\nStep 3: Extracting edge features...")
             edge_features = self.extract_edge_features(g)
             
-            # Step 4: Store in Redis
-            logger.info("\nStep 4: Storing features in Redis...")
-            self.store_in_redis(node_features, edge_features)
-            
-            # Step 5: Store in Parquet (backup)
-            logger.info("\nStep 5: Storing features in Parquet (backup)...")
+            # Step 4: Store in Parquet
+            logger.info("\nStep 4: Storing features in Parquet...")
             self.store_in_parquet(node_features, edge_features)
             
             logger.info("\n" + "=" * 60)
@@ -376,7 +311,7 @@ class CompleteFeatureExtractor:
             logger.info(f"Node Features: {len(node_features)} nodes × {len(node_features.columns)} features")
             if edge_features is not None:
                 logger.info(f"Edge Features: {len(edge_features)} edges × {len(edge_features.columns)} features")
-            logger.info("Features stored in Redis and Parquet")
+            logger.info("Features stored in Parquet (data/features/)")
             
             return True
             
@@ -385,7 +320,6 @@ class CompleteFeatureExtractor:
             return False
         finally:
             self.neo4j_driver.close()
-            self.redis_client.close()
 
 
 def main():

@@ -1,12 +1,12 @@
 """
 Feature Store
-Manages feature storage with multiple backends
+Manages feature storage with CSV or Parquet backends
 """
 
 import pandas as pd
 from typing import Optional, Dict
 import logging
-from .storage_backend import StorageBackend, CSVBackend, RedisBackend, ParquetBackend
+from .storage_backend import StorageBackend, CSVBackend, ParquetBackend
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,6 @@ class FeatureStore:
         
         if backend_type == 'csv':
             self.backend: StorageBackend = CSVBackend(**backend_kwargs)
-        elif backend_type == 'redis':
-            self.backend: StorageBackend = RedisBackend(**backend_kwargs)
         elif backend_type == 'parquet':
             self.backend: StorageBackend = ParquetBackend(**backend_kwargs)
         else:
