@@ -26,6 +26,7 @@ pyarrow>=14.0.0  # Parquet backend
 
 # Graph analysis
 networkx>=3.1
+torchdata==0.7.1  # DGL 2.2.1 expects the legacy torchdata.datapipes layout
 
 # Utilities
 python-dotenv>=1.0.0  # For .env file support
