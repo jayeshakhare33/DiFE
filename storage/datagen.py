@@ -40,8 +40,8 @@ sys.path.insert(0, str(project_root))
 SEED = 42
 OUT_DIR = "./india_fraud_data_explainable"
 
-N_USERS = 50  # Increased to support more transactions
-TARGET_TRANSACTIONS = 500  # Target 500 transactions
+N_USERS = 15000  # Increased to support more transactions
+TARGET_TRANSACTIONS = 100000 # Target 500 transactions
 
 FRAUD_RATE = 0.035  # initial guess, replaced by logical tagging
 USE_EPOCH_MS = True

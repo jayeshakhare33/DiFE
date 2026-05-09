@@ -41,6 +41,7 @@ Welcome to the Fraud Detection GNN Project documentation! All documentation has 
 - **[Next Steps](./guides/NEXT_STEPS.md)** - What to do after data generation
 - **[What to Do Next](./guides/WHAT_TO_DO_NEXT.md)** - Implementation roadmap
 - **[Storage Options](./guides/STORAGE_OPTIONS.md)** - Storage backend options
+- **[Edge Model Training And Scoring](./guides/EDGE_MODEL_TRAINING_AND_SCORING.md)** - Train the GraphSAGE edge model and score new transaction CSV files
 
 ---
 
@@ -87,6 +88,7 @@ Visit: [Troubleshooting](./troubleshooting/)
 ### **Running the Pipeline**
 1. [Next Steps](./guides/NEXT_STEPS.md)
 2. [What to Do Next](./guides/WHAT_TO_DO_NEXT.md)
+3. [Edge Model Training And Scoring](./guides/EDGE_MODEL_TRAINING_AND_SCORING.md)
 
 ### **Distributed Computing**
 1. [Distributed Computing Status](./architecture/DISTRIBUTED_COMPUTING_STATUS.md)
@@ -115,4 +117,3 @@ readme/
 ---
 
 **Last Updated**: November 2025
-
